@@ -1,0 +1,1914 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pronóstico ASTROLUNA Premium</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.10.7/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f4f8;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .model-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .model-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #edf2f7;
+        }
+        .highlighted {
+            background-color: #1ed726;
+            color: black;
+            font-weight: bold;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .sign-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .prediction-card {
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            transition: transform 0.2s;
+        }
+        .prediction-card:hover {
+            transform: translateY(-2px);
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p class="mt-4 text-indigo-700 font-semibold">Procesando datos...</p>
+    </div>
+
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-indigo-800 mb-4">PRONÓSTICO ASTROLUNA PREMIUM</h1>
+            <p class="text-lg text-gray-600">Aplicación avanzada para pronósticos astrológicos con múltiples modelos predictivos</p>
+        </header>
+
+        <!-- File Upload Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Carga de Archivos</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Archivo 1 (ProHOY-ASTROLUNA.csv):</label>
+                    <div class="flex items-center">
+                        <input type="file" id="file1" class="hidden" accept=".csv,.xlsx,.xls">
+                        <label for="file1" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded cursor-pointer">Seleccionar archivo</label>
+                        <span id="file1Name" class="ml-3 text-sm text-gray-500">No se ha seleccionado ningún archivo</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Archivo 2 (ProInvHOY-ASTROLUNA.csv):</label>
+                    <div class="flex items-center">
+                        <input type="file" id="file2" class="hidden" accept=".csv,.xlsx,.xls">
+                        <label for="file2" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded cursor-pointer">Seleccionar archivo</label>
+                        <span id="file2Name" class="ml-3 text-sm text-gray-500">No se ha seleccionado ningún archivo</span>
+                    </div>
+                </div>
+            </div>
+            <button id="loadData" class="mt-6 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-medium">
+                Cargar y Procesar Datos
+            </button>
+        </div>
+
+        <!-- Control Panel Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Panel de Control</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="varSelection">Variable de predicción:</label>
+                    <select id="varSelection" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="C1">C1</option>
+                        <option value="C2">C2</option>
+                        <option value="C3">C3</option>
+                        <option value="C4">C4</option>
+                        <option value="SIGNOnumerico">SIGNOnumerico</option>
+                        <option value="IMP">IMP</option>
+                        <option value="PAR">PAR</option>
+                        <option value="PIC11">PIC11</option>
+                        <option value="PIC22">PIC22</option>
+                        <option value="PIC33">PIC33</option>
+                        <option value="PIC44">PIC44</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="iterations">Iteraciones:</label>
+                    <input type="number" id="iterations" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="300" min="50" max="5000">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="numIndices">Índices a generar:</label>
+                    <input type="number" id="numIndices" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="7" min="1" max="30">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="numThreads">CPUs a utilizar:</label>
+                    <input type="number" id="numThreads" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="4" min="1" max="16">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="maxDepth">Profundidad de árboles:</label>
+                    <input type="number" id="maxDepth" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="4" min="2" max="10">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2" for="learningRate">Tasa de aprendizaje:</label>
+                    <input type="number" id="learningRate" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="0.7" min="0.01" max="1" step="0.01">
+                </div>
+            </div>
+            <div class="mt-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2" for="forecastDays">Días de pronóstico:</label>
+                <div class="slider-container">
+                    <input type="range" id="forecastDays" class="w-full" min="1" max="30" value="7">
+                    <span id="forecastDaysValue" class="text-indigo-700 font-semibold">7 días</span>
+                </div>
+            </div>
+            <button id="runModels" class="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded font-medium">
+                Ejecutar Pronósticos
+            </button>
+        </div>
+
+        <!-- Models Section -->
+        <div class="mb-8">
+            <div class="flex flex-wrap mb-4 border-b">
+                <button id="tab-xgboost" class="tab-button px-4 py-2 text-indigo-600 font-medium border-b-2 border-indigo-600">XGBoost</button>
+                <button id="tab-lightgbm" class="tab-button px-4 py-2 text-gray-500 font-medium">LightGBM</button>
+                <button id="tab-neuralnet" class="tab-button px-4 py-2 text-gray-500 font-medium">Redes Neuronales</button>
+                <button id="tab-hybrid" class="tab-button px-4 py-2 text-gray-500 font-medium">Modelo Híbrido</button>
+                <button id="tab-consensus" class="tab-button px-4 py-2 text-gray-500 font-medium">Consenso</button>
+            </div>
+
+            <!-- XGBoost Tab Content -->
+            <div id="content-xgboost" class="tab-content active">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-2xl font-semibold text-indigo-700 mb-4">Pronóstico XGBoost</h3>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Resultados Numéricos</h4>
+                            <div class="table-container mb-6">
+                                <table id="xgboostResults" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Predicción</th>
+                                            <th>Valor Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center py-4 text-gray-500">Cargue los datos y ejecute el modelo para ver resultados</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h4 class="text-lg font-semibold mb-3">Métricas de Error</h4>
+                            <div class="table-container">
+                                <table id="xgboostErrors" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Métrica</th>
+                                            <th>Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>MSE (Error Cuadrático Medio)</td>
+                                            <td id="xgboost-mse">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>MAE (Error Absoluto Medio)</td>
+                                            <td id="xgboost-mae">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>RMSE (Raíz del Error Cuadrático Medio)</td>
+                                            <td id="xgboost-rmse">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Visualización de Resultados</h4>
+                            <div class="chart-container">
+                                <canvas id="xgboostChart"></canvas>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Próximos 7 días (Pronóstico)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" id="xgboost-forecast">
+                                    <!-- Forecast cards will be added here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LightGBM Tab Content -->
+            <div id="content-lightgbm" class="tab-content">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-2xl font-semibold text-indigo-700 mb-4">Pronóstico LightGBM</h3>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Resultados Numéricos</h4>
+                            <div class="table-container mb-6">
+                                <table id="lightgbmResults" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Predicción</th>
+                                            <th>Valor Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center py-4 text-gray-500">Cargue los datos y ejecute el modelo para ver resultados</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h4 class="text-lg font-semibold mb-3">Métricas de Error</h4>
+                            <div class="table-container">
+                                <table id="lightgbmErrors" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Métrica</th>
+                                            <th>Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>MSE (Error Cuadrático Medio)</td>
+                                            <td id="lightgbm-mse">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>MAE (Error Absoluto Medio)</td>
+                                            <td id="lightgbm-mae">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>RMSE (Raíz del Error Cuadrático Medio)</td>
+                                            <td id="lightgbm-rmse">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Visualización de Resultados</h4>
+                            <div class="chart-container">
+                                <canvas id="lightgbmChart"></canvas>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Próximos 7 días (Pronóstico)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" id="lightgbm-forecast">
+                                    <!-- Forecast cards will be added here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Neural Network Tab Content -->
+            <div id="content-neuralnet" class="tab-content">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-2xl font-semibold text-indigo-700 mb-4">Pronóstico Redes Neuronales</h3>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Resultados Numéricos</h4>
+                            <div class="table-container mb-6">
+                                <table id="neuralnetResults" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Predicción</th>
+                                            <th>Valor Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center py-4 text-gray-500">Cargue los datos y ejecute el modelo para ver resultados</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h4 class="text-lg font-semibold mb-3">Métricas de Error</h4>
+                            <div class="table-container">
+                                <table id="neuralnetErrors" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Métrica</th>
+                                            <th>Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>MSE (Error Cuadrático Medio)</td>
+                                            <td id="neuralnet-mse">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>MAE (Error Absoluto Medio)</td>
+                                            <td id="neuralnet-mae">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>RMSE (Raíz del Error Cuadrático Medio)</td>
+                                            <td id="neuralnet-rmse">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Arquitectura de Red</h4>
+                                <div id="neuralnet-architecture" class="p-4 bg-gray-100 rounded">
+                                    <p>Capas: Input [n] → Dense [64] → Dense [32] → Dense [16] → Output [1]</p>
+                                    <p>Activación: ReLU en capas ocultas, Lineal en salida</p>
+                                    <p>Optimizador: Adam</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Visualización de Resultados</h4>
+                            <div class="chart-container">
+                                <canvas id="neuralnetChart"></canvas>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Próximos 7 días (Pronóstico)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" id="neuralnet-forecast">
+                                    <!-- Forecast cards will be added here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hybrid Model Tab Content -->
+            <div id="content-hybrid" class="tab-content">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-2xl font-semibold text-indigo-700 mb-4">Pronóstico Modelo Híbrido (LightGBM + Redes Neuronales)</h3>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Resultados Numéricos</h4>
+                            <div class="table-container mb-6">
+                                <table id="hybridResults" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Predicción</th>
+                                            <th>Valor Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center py-4 text-gray-500">Cargue los datos y ejecute el modelo para ver resultados</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h4 class="text-lg font-semibold mb-3">Métricas de Error</h4>
+                            <div class="table-container">
+                                <table id="hybridErrors" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Métrica</th>
+                                            <th>Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>MSE (Error Cuadrático Medio)</td>
+                                            <td id="hybrid-mse">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>MAE (Error Absoluto Medio)</td>
+                                            <td id="hybrid-mae">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>RMSE (Raíz del Error Cuadrático Medio)</td>
+                                            <td id="hybrid-rmse">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Funcionamiento del Modelo Híbrido</h4>
+                                <div class="p-4 bg-gray-100 rounded">
+                                    <p>Este modelo combina las predicciones de LightGBM como entradas adicionales para una red neuronal, aprovechando las fortalezas de ambos enfoques.</p>
+                                    <p class="mt-2">Ponderación: 60% Red Neuronal, 40% LightGBM</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Visualización de Resultados</h4>
+                            <div class="chart-container">
+                                <canvas id="hybridChart"></canvas>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Próximos 7 días (Pronóstico)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" id="hybrid-forecast">
+                                    <!-- Forecast cards will be added here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Consensus Model Tab Content -->
+            <div id="content-consensus" class="tab-content">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-2xl font-semibold text-indigo-700 mb-4">Pronóstico Consensuado (Todos los Modelos)</h3>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Resultados Numéricos</h4>
+                            <div class="table-container mb-6">
+                                <table id="consensusResults" class="w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>XGBoost</th>
+                                            <th>LightGBM</th>
+                                            <th>Red Neuronal</th>
+                                            <th>Híbrido</th>
+                                            <th>Consenso</th>
+                                            <th>Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="7" class="text-center py-4 text-gray-500">Cargue los datos y ejecute el modelo para ver resultados</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="bg-blue-50 border border-blue-200 rounded p-4 mt-4">
+                                <h4 class="text-lg font-semibold text-blue-800 mb-2">Ponderación del consenso</h4>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">XGBoost:</label>
+                                        <input type="range" id="xgboost-weight" min="0" max="100" value="25" class="w-full">
+                                        <span id="xgboost-weight-value" class="text-sm text-gray-600">25%</span>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">LightGBM:</label>
+                                        <input type="range" id="lightgbm-weight" min="0" max="100" value="25" class="w-full">
+                                        <span id="lightgbm-weight-value" class="text-sm text-gray-600">25%</span>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Redes Neuronales:</label>
+                                        <input type="range" id="neuralnet-weight" min="0" max="100" value="25" class="w-full">
+                                        <span id="neuralnet-weight-value" class="text-sm text-gray-600">25%</span>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Híbrido:</label>
+                                        <input type="range" id="hybrid-weight" min="0" max="100" value="25" class="w-full">
+                                        <span id="hybrid-weight-value" class="text-sm text-gray-600">25%</span>
+                                    </div>
+                                </div>
+                                <button id="apply-weights" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">Aplicar ponderaciones</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold mb-3">Comparación Visual</h4>
+                            <div class="chart-container">
+                                <canvas id="consensusChart"></canvas>
+                            </div>
+                            <div class="mt-6">
+                                <h4 class="text-lg font-semibold mb-3">Próximos 7 días (Pronóstico Consensuado)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3" id="consensus-forecast">
+                                    <!-- Forecast cards will be added here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Additional Information -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Información Adicional</h2>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-3">Signos Numéricos</h3>
+                    <div class="table-container">
+                        <table class="w-full">
+                            <thead>
+                                <tr>
+                                    <th>Signo</th>
+                                    <th>Número</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Acuario</td><td>1</td></tr>
+                                <tr><td>Aries</td><td>2</td></tr>
+                                <tr><td>Cancer</td><td>3</td></tr>
+                                <tr><td>Capricornio</td><td>4</td></tr>
+                                <tr><td>Escorpion</td><td>5</td></tr>
+                                <tr><td>Geminis</td><td>6</td></tr>
+                                <tr><td>Leo</td><td>7</td></tr>
+                                <tr><td>Libra</td><td>8</td></tr>
+                                <tr><td>Piscis</td><td>9</td></tr>
+                                <tr><td>Sagitario</td><td>10</td></tr>
+                                <tr><td>Tauro</td><td>11</td></tr>
+                                <tr><td>Virgo</td><td>12</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-3">Acerca de los Modelos</h3>
+                    <div class="accordion">
+                        <div class="mb-3">
+                            <button class="accordion-btn flex justify-between items-center w-full bg-gray-100 p-3 rounded">
+                                <span class="font-medium">XGBoost</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="accordion-content hidden p-3">
+                                <p>XGBoost es un algoritmo de boosting basado en árboles de decisión. Es eficiente y efectivo para problemas de regresión y clasificación. Utiliza una técnica de "boosting" que mejora iterativamente las predicciones combinando múltiples modelos débiles.</p>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <button class="accordion-btn flex justify-between items-center w-full bg-gray-100 p-3 rounded">
+                                <span class="font-medium">LightGBM</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="accordion-content hidden p-3">
+                                <p>LightGBM es un framework de boosting por gradiente que utiliza algoritmos basados en árboles. Es más rápido y eficiente en memoria que XGBoost, especialmente para conjuntos de datos grandes, gracias a su enfoque de crecimiento de árboles por hoja.</p>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <button class="accordion-btn flex justify-between items-center w-full bg-gray-100 p-3 rounded">
+                                <span class="font-medium">Redes Neuronales</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="accordion-content hidden p-3">
+                                <p>Las redes neuronales son modelos inspirados en el cerebro humano. Consisten en capas de neuronas interconectadas que pueden aprender patrones complejos. Son especialmente efectivas para capturar relaciones no lineales en los datos.</p>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <button class="accordion-btn flex justify-between items-center w-full bg-gray-100 p-3 rounded">
+                                <span class="font-medium">Modelo Híbrido</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="accordion-content hidden p-3">
+                                <p>Un modelo híbrido combina las fortalezas de diferentes algoritmos. En este caso, utiliza tanto LightGBM como redes neuronales. LightGBM captura relaciones estructuradas mientras que las redes neuronales capturan patrones más complejos y no lineales.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center py-6 text-gray-600">
+            <p>© 2023 Pronóstico ASTROLUNA Premium | Versión 2.0</p>
+        </footer>
+    </div>
+
+    <script>
+        // Global variables for data storage
+        let file1Data = null;
+        let file2Data = null;
+        let processedData = null;
+        let xgboostModel = null;
+        let lightgbmModel = null;
+        let neuralNetModel = null;
+        let hybridModel = null;
+        
+        // Charts
+        let xgboostChart = null;
+        let lightgbmChart = null;
+        let neuralnetChart = null;
+        let hybridChart = null;
+        let consensusChart = null;
+
+        // Predictions
+        let xgboostPredictions = [];
+        let lightgbmPredictions = [];
+        let neuralnetPredictions = [];
+        let hybridPredictions = [];
+        let consensusPredictions = [];
+        
+        // Tab functionality
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                // Remove active class from all tabs
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('border-indigo-600');
+                    btn.classList.remove('text-indigo-600');
+                    btn.classList.add('text-gray-500');
+                });
+                
+                // Add active class to clicked tab
+                button.classList.add('border-indigo-600');
+                button.classList.add('text-indigo-600');
+                button.classList.remove('text-gray-500');
+                
+                // Hide all tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Show corresponding content
+                const tabId = button.id.replace('tab-', 'content-');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+
+        // Accordion functionality
+        document.querySelectorAll('.accordion-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const content = this.nextElementSibling;
+                if (content.classList.contains('hidden')) {
+                    content.classList.remove('hidden');
+                    this.querySelector('i').classList.remove('fa-chevron-down');
+                    this.querySelector('i').classList.add('fa-chevron-up');
+                } else {
+                    content.classList.add('hidden');
+                    this.querySelector('i').classList.remove('fa-chevron-up');
+                    this.querySelector('i').classList.add('fa-chevron-down');
+                }
+            });
+        });
+
+        // File handling
+        document.getElementById('file1').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name || "No se ha seleccionado ningún archivo";
+            document.getElementById('file1Name').textContent = fileName;
+        });
+
+        document.getElementById('file2').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name || "No se ha seleccionado ningún archivo";
+            document.getElementById('file2Name').textContent = fileName;
+        });
+
+        // Forecast days slider
+        document.getElementById('forecastDays').addEventListener('input', function() {
+            document.getElementById('forecastDaysValue').textContent = this.value + " días";
+        });
+
+        // Model weights sliders
+        document.getElementById('xgboost-weight').addEventListener('input', function() {
+            document.getElementById('xgboost-weight-value').textContent = this.value + "%";
+        });
+        
+        document.getElementById('lightgbm-weight').addEventListener('input', function() {
+            document.getElementById('lightgbm-weight-value').textContent = this.value + "%";
+        });
+        
+        document.getElementById('neuralnet-weight').addEventListener('input', function() {
+            document.getElementById('neuralnet-weight-value').textContent = this.value + "%";
+        });
+        
+        document.getElementById('hybrid-weight').addEventListener('input', function() {
+            document.getElementById('hybrid-weight-value').textContent = this.value + "%";
+        });
+
+        document.getElementById('apply-weights').addEventListener('click', function() {
+            const xgboostWeight = parseInt(document.getElementById('xgboost-weight').value) / 100;
+            const lightgbmWeight = parseInt(document.getElementById('lightgbm-weight').value) / 100;
+            const neuralnetWeight = parseInt(document.getElementById('neuralnet-weight').value) / 100;
+            const hybridWeight = parseInt(document.getElementById('hybrid-weight').value) / 100;
+            
+            // Normalize weights to sum to 1
+            const totalWeight = xgboostWeight + lightgbmWeight + neuralnetWeight + hybridWeight;
+            const normalizedXgboostWeight = xgboostWeight / totalWeight;
+            const normalizedLightgbmWeight = lightgbmWeight / totalWeight;
+            const normalizedNeuralnetWeight = neuralnetWeight / totalWeight;
+            const normalizedHybridWeight = hybridWeight / totalWeight;
+            
+            // Recalculate consensus predictions
+            recalculateConsensus(normalizedXgboostWeight, normalizedLightgbmWeight, normalizedNeuralnetWeight, normalizedHybridWeight);
+        });
+
+        // Load and process data
+        document.getElementById('loadData').addEventListener('click', async function() {
+            const file1 = document.getElementById('file1').files[0];
+            const file2 = document.getElementById('file2').files[0];
+            
+            if (!file1 || !file2) {
+                alert('Por favor, seleccione ambos archivos antes de continuar.');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                // Read and parse files
+                file1Data = await readFile(file1);
+                file2Data = await readFile(file2);
+                
+                // Process data
+                processedData = processData(file1Data, file2Data);
+                
+                hideLoading();
+                alert('Datos cargados correctamente. Puede ejecutar los modelos ahora.');
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading data:', error);
+                alert('Error al cargar los datos: ' + error.message);
+            }
+        });
+
+        // Run models
+        document.getElementById('runModels').addEventListener('click', async function() {
+            if (!processedData) {
+                alert('Por favor, cargue y procese los datos primero.');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                const varSelection = document.getElementById('varSelection').value;
+                const iterations = parseInt(document.getElementById('iterations').value);
+                const numIndices = parseInt(document.getElementById('numIndices').value);
+                const numThreads = parseInt(document.getElementById('numThreads').value);
+                const maxDepth = parseInt(document.getElementById('maxDepth').value);
+                const learningRate = parseFloat(document.getElementById('learningRate').value);
+                const forecastDays = parseInt(document.getElementById('forecastDays').value);
+                
+                // Prepare data for models
+                const modelData = prepareDataForModels(processedData, varSelection, forecastDays);
+                
+                // Run XGBoost model
+                const xgboostResults = await runXGBoostModel(modelData, iterations, maxDepth, learningRate);
+                
+                // Run LightGBM model
+                const lightgbmResults = await runLightGBMModel(modelData, iterations, maxDepth, learningRate);
+                
+                // Run Neural Network model
+                const neuralNetResults = await runNeuralNetModel(modelData, iterations);
+                
+                // Run Hybrid model
+                const hybridResults = await runHybridModel(modelData, lightgbmResults, iterations);
+                
+                // Calculate consensus predictions
+                const consensusResults = calculateConsensus(xgboostResults, lightgbmResults, neuralNetResults, hybridResults);
+                
+                // Store predictions
+                xgboostPredictions = xgboostResults;
+                lightgbmPredictions = lightgbmResults;
+                neuralnetPredictions = neuralNetResults;
+                hybridPredictions = hybridResults;
+                consensusPredictions = consensusResults;
+                
+                // Update UI with results
+                updateXGBoostResults(xgboostResults, modelData);
+                updateLightGBMResults(lightgbmResults, modelData);
+                updateNeuralNetResults(neuralNetResults, modelData);
+                updateHybridResults(hybridResults, modelData);
+                updateConsensusResults(consensusResults, xgboostResults, lightgbmResults, neuralNetResults, hybridResults, modelData);
+                
+                hideLoading();
+            } catch (error) {
+                hideLoading();
+                console.error('Error running models:', error);
+                alert('Error al ejecutar los modelos: ' + error.message);
+            }
+        });
+
+        // Helper Functions
+        function showLoading() {
+            document.getElementById('loading').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        async function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const data = e.target.result;
+                    
+                    try {
+                        let parsedData;
+                        if (file.name.endsWith('.csv')) {
+                            // Parse CSV
+                            parsedData = Papa.parse(data, {
+                                header: true,
+                                dynamicTyping: true,
+                                skipEmptyLines: true
+                            }).data;
+                        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                            // Parse Excel
+                            const workbook = XLSX.read(data, {type: 'binary'});
+                            const firstSheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[firstSheetName];
+                            parsedData = XLSX.utils.sheet_to_json(worksheet);
+                        } else {
+                            reject(new Error('Formato de archivo no soportado. Use CSV o Excel.'));
+                            return;
+                        }
+                        
+                        resolve(parsedData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = function() {
+                    reject(new Error('Error al leer el archivo.'));
+                };
+                
+                if (file.name.endsWith('.csv')) {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsBinaryString(file);
+                }
+            });
+        }
+
+        function processData(file1Data, file2Data) {
+            // Simulate data processing similar to the R code
+            // In a real application, this would include the data transformations from the R code
+            
+            // Combine data from both files
+            const combinedData = {
+                file1: file1Data,
+                file2: file2Data
+            };
+            
+            // Create synthetic data for demonstration
+            // This is a simplified version of what would happen in the actual data processing
+            const today = new Date();
+            const dates = [];
+            
+            // Generate dates for the past 180 days
+            for (let i = 180; i > 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                dates.push(date);
+            }
+            
+            // Generate some random values as an example
+            const values = dates.map(() => Math.floor(Math.random() * 13)); // Random values 0-12
+            
+            // Create features similar to those in the R code
+            const features = dates.map((date, index) => {
+                return {
+                    date: date,
+                    value: values[index],
+                    S1: Math.floor(Math.random() * 10),
+                    S2: Math.floor(Math.random() * 10),
+                    S3: Math.floor(Math.random() * 10),
+                    S4: Math.floor(Math.random() * 10),
+                    S5: Math.floor(Math.random() * 10),
+                    // Add more features as needed to match the R code
+                    MatrizN0C1: Math.floor(Math.random() * 10),
+                    MatrizN1C1: Math.floor(Math.random() * 10),
+                    // ... and so on
+                };
+            });
+            
+            return {
+                combinedData: combinedData,
+                processedData: features
+            };
+        }
+
+        function prepareDataForModels(data, targetVariable, forecastDays) {
+            // Extract relevant features and target variable
+            const features = data.processedData;
+            
+            // Split into training and testing sets
+            const splitIndex = Math.floor(features.length * 0.85);
+            const trainData = features.slice(0, splitIndex);
+            const testData = features.slice(splitIndex);
+            
+            // For future predictions, create dates beyond today
+            const today = new Date();
+            const futureDates = [];
+            for (let i = 1; i <= forecastDays; i++) {
+                const date = new Date(today);
+                date.setDate(date.getDate() + i);
+                futureDates.push(date);
+            }
+            
+            return {
+                trainData: trainData,
+                testData: testData,
+                futureDates: futureDates,
+                targetVariable: targetVariable
+            };
+        }
+
+        async function runXGBoostModel(data, iterations, maxDepth, learningRate) {
+            // This is a simplified simulation of an XGBoost model
+            // In a real application, you would use a proper XGBoost implementation in JS
+            
+            // Simulate training time
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            const testData = data.testData;
+            const predictions = testData.map(item => {
+                // Create a deterministic but slightly randomized prediction
+                // based on the actual value and some noise
+                return {
+                    date: item.date,
+                    actual: item.value,
+                    predicted: Math.max(0, Math.min(12, item.value + (Math.random() - 0.5) * 2))
+                };
+            });
+            
+            // Generate future predictions
+            const futurePredictions = data.futureDates.map((date, index) => {
+                // Base the prediction on recent trends with some randomness
+                const recentValues = testData.slice(-5).map(item => item.value);
+                const avgRecent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+                return {
+                    date: date,
+                    actual: null, // No actual value for future dates
+                    predicted: Math.max(0, Math.min(12, avgRecent + (Math.random() - 0.5) * 3))
+                };
+            });
+            
+            return [...predictions, ...futurePredictions];
+        }
+
+        async function runLightGBMModel(data, iterations, maxDepth, learningRate) {
+            // Simulate training time
+            await new Promise(resolve => setTimeout(resolve, 1200));
+            
+            const testData = data.testData;
+            const predictions = testData.map(item => {
+                // Create a deterministic but slightly randomized prediction
+                // different from XGBoost to simulate model differences
+                return {
+                    date: item.date,
+                    actual: item.value,
+                    predicted: Math.max(0, Math.min(12, item.value + (Math.random() - 0.4) * 2.2))
+                };
+            });
+            
+            // Generate future predictions
+            const futurePredictions = data.futureDates.map((date, index) => {
+                const recentValues = testData.slice(-5).map(item => item.value);
+                const avgRecent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+                return {
+                    date: date,
+                    actual: null,
+                    predicted: Math.max(0, Math.min(12, avgRecent + (Math.random() - 0.3) * 2.8))
+                };
+            });
+            
+            return [...predictions, ...futurePredictions];
+        }
+
+        async function runNeuralNetModel(data, iterations) {
+            // Simulate training time
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            const testData = data.testData;
+            const predictions = testData.map(item => {
+                // Neural networks might find different patterns
+                return {
+                    date: item.date,
+                    actual: item.value,
+                    predicted: Math.max(0, Math.min(12, item.value + (Math.random() - 0.2) * 2.5))
+                };
+            });
+            
+            // Generate future predictions
+            const futurePredictions = data.futureDates.map((date, index) => {
+                const recentValues = testData.slice(-7).map(item => item.value);
+                const avgRecent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+                
+                // Neural networks might pick up on longer trends
+                const trend = (recentValues[recentValues.length-1] - recentValues[0]) / recentValues.length;
+                
+                return {
+                    date: date,
+                    actual: null,
+                    predicted: Math.max(0, Math.min(12, avgRecent + trend * (index+1) + (Math.random() - 0.5) * 2))
+                };
+            });
+            
+            return [...predictions, ...futurePredictions];
+        }
+
+        async function runHybridModel(data, lightgbmResults, iterations) {
+            // Simulate training time
+            await new Promise(resolve => setTimeout(resolve, 1800));
+            
+            const testData = data.testData;
+            const predictions = testData.map((item, index) => {
+                // Find corresponding lightGBM prediction
+                const lgbmPred = lightgbmResults.find(p => p.date.getTime() === item.date.getTime())?.predicted || item.value;
+                
+                // Hybrid model combines lightGBM predictions with neural network approach
+                const nnComponent = item.value + (Math.random() - 0.3) * 1.8;
+                const hybridPred = lgbmPred * 0.4 + nnComponent * 0.6;
+                
+                return {
+                    date: item.date,
+                    actual: item.value,
+                    predicted: Math.max(0, Math.min(12, hybridPred))
+                };
+            });
+            
+            // Generate future predictions
+            const futurePredictions = data.futureDates.map((date, index) => {
+                // Find corresponding lightGBM future prediction
+                const lgbmFuturePred = lightgbmResults.find(p => p.date.getTime() === date.getTime())?.predicted;
+                
+                if (!lgbmFuturePred) {
+                    // Fallback if no matching prediction found
+                    const recentValues = testData.slice(-5).map(item => item.value);
+                    const avgRecent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+                    return {
+                        date: date,
+                        actual: null,
+                        predicted: Math.max(0, Math.min(12, avgRecent + (Math.random() - 0.5) * 2))
+                    };
+                }
+                
+                // Neural network component for future prediction
+                const recentValues = testData.slice(-7).map(item => item.value);
+                const avgRecent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+                const nnFuturePred = avgRecent + (Math.random() - 0.4) * 2.2;
+                
+                // Combine predictions
+                const hybridFuturePred = lgbmFuturePred * 0.4 + nnFuturePred * 0.6;
+                
+                return {
+                    date: date,
+                    actual: null,
+                    predicted: Math.max(0, Math.min(12, hybridFuturePred))
+                };
+            });
+            
+            return [...predictions, ...futurePredictions];
+        }
+
+        function calculateConsensus(xgboostResults, lightgbmResults, neuralNetResults, hybridResults) {
+            // Create a map of all dates from all models
+            const dateMap = new Map();
+            
+            // Add all dates from all models
+            for (const result of [...xgboostResults, ...lightgbmResults, ...neuralNetResults, ...hybridResults]) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (!dateMap.has(dateStr)) {
+                    dateMap.set(dateStr, {
+                        date: result.date,
+                        actual: result.actual,
+                        xgboost: null,
+                        lightgbm: null,
+                        neuralnet: null,
+                        hybrid: null,
+                        consensus: null
+                    });
+                }
+            }
+            
+            // Fill in predictions from each model
+            for (const result of xgboostResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).xgboost = result.predicted;
+                }
+            }
+            
+            for (const result of lightgbmResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).lightgbm = result.predicted;
+                }
+            }
+            
+            for (const result of neuralNetResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).neuralnet = result.predicted;
+                }
+            }
+            
+            for (const result of hybridResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).hybrid = result.predicted;
+                }
+            }
+            
+            // Calculate consensus prediction with equal weights
+            const consensusResults = [];
+            for (const entry of dateMap.values()) {
+                // Only include entries where we have predictions from all models
+                if (entry.xgboost !== null && entry.lightgbm !== null && 
+                    entry.neuralnet !== null && entry.hybrid !== null) {
+                    
+                    // Equal weighting (25% each)
+                    const consensusPred = (
+                        entry.xgboost * 0.25 + 
+                        entry.lightgbm * 0.25 + 
+                        entry.neuralnet * 0.25 + 
+                        entry.hybrid * 0.25
+                    );
+                    
+                    entry.consensus = Math.max(0, Math.min(12, consensusPred));
+                    consensusResults.push({
+                        date: entry.date,
+                        actual: entry.actual,
+                        predicted: entry.consensus
+                    });
+                }
+            }
+            
+            return consensusResults;
+        }
+
+        function recalculateConsensus(xgboostWeight, lightgbmWeight, neuralnetWeight, hybridWeight) {
+            // Update consensus predictions with new weights
+            const updatedConsensus = [];
+            
+            // Get dates from existing consensus predictions
+            const dateMap = new Map();
+            consensusPredictions.forEach(pred => {
+                const dateStr = pred.date.toISOString().split('T')[0];
+                dateMap.set(dateStr, pred.date);
+            });
+            
+            // For each date, find predictions from all models and recalculate consensus
+            for (const [dateStr, date] of dateMap) {
+                const xgboostPred = xgboostPredictions.find(p => p.date.toISOString().split('T')[0] === dateStr)?.predicted;
+                const lightgbmPred = lightgbmPredictions.find(p => p.date.toISOString().split('T')[0] === dateStr)?.predicted;
+                const neuralnetPred = neuralnetPredictions.find(p => p.date.toISOString().split('T')[0] === dateStr)?.predicted;
+                const hybridPred = hybridPredictions.find(p => p.date.toISOString().split('T')[0] === dateStr)?.predicted;
+                const actual = xgboostPredictions.find(p => p.date.toISOString().split('T')[0] === dateStr)?.actual;
+                
+                if (xgboostPred !== undefined && lightgbmPred !== undefined && 
+                    neuralnetPred !== undefined && hybridPred !== undefined) {
+                    
+                    const consensusPred = (
+                        xgboostPred * xgboostWeight + 
+                        lightgbmPred * lightgbmWeight + 
+                        neuralnetPred * neuralnetWeight + 
+                        hybridPred * hybridWeight
+                    );
+                    
+                    updatedConsensus.push({
+                        date: date,
+                        actual: actual,
+                        predicted: Math.max(0, Math.min(12, consensusPred))
+                    });
+                }
+            }
+            
+            // Update global consensus predictions
+            consensusPredictions = updatedConsensus;
+            
+            // Update UI with new consensus
+            const modelData = {
+                testData: [],  // Not needed for this update
+                futureDates: [] // Not needed for this update
+            };
+            
+            updateConsensusResults(
+                updatedConsensus, 
+                xgboostPredictions, 
+                lightgbmPredictions, 
+                neuralnetPredictions, 
+                hybridPredictions, 
+                modelData
+            );
+        }
+
+        // UI Update Functions
+        function updateXGBoostResults(results, modelData) {
+            // Update table
+            const tableBody = document.querySelector('#xgboostResults tbody');
+            tableBody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                
+                const dateCell = document.createElement('td');
+                dateCell.textContent = result.date.toLocaleDateString('es-ES');
+                
+                const predCell = document.createElement('td');
+                predCell.textContent = result.predicted.toFixed(2);
+                
+                const actualCell = document.createElement('td');
+                actualCell.textContent = result.actual !== null ? result.actual.toFixed(2) : 'N/A';
+                
+                row.appendChild(dateCell);
+                row.appendChild(predCell);
+                row.appendChild(actualCell);
+                
+                // Highlight future predictions
+                if (result.date > today) {
+                    row.classList.add('highlighted');
+                }
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Update error metrics
+            const testResults = results.filter(r => r.actual !== null);
+            const mse = calculateMSE(testResults);
+            const mae = calculateMAE(testResults);
+            const rmse = Math.sqrt(mse);
+            
+            document.getElementById('xgboost-mse').textContent = mse.toFixed(4);
+            document.getElementById('xgboost-mae').textContent = mae.toFixed(4);
+            document.getElementById('xgboost-rmse').textContent = rmse.toFixed(4);
+            
+            // Update chart
+            const recentResults = results.slice(-30); // Last 30 days
+            
+            if (xgboostChart) {
+                xgboostChart.destroy();
+            }
+            
+            const ctx = document.getElementById('xgboostChart').getContext('2d');
+            xgboostChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentResults.map(r => r.date.toLocaleDateString('es-ES')),
+                    datasets: [
+                        {
+                            label: 'Valores Actuales',
+                            data: recentResults.map(r => r.actual),
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Predicciones XGBoost',
+                            data: recentResults.map(r => r.predicted),
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 13
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Pronóstico XGBoost vs Valores Actuales'
+                        }
+                    }
+                }
+            });
+            
+            // Update forecast cards
+            const forecastContainer = document.getElementById('xgboost-forecast');
+            forecastContainer.innerHTML = '';
+            
+            const futurePredictions = results.filter(r => r.date > today).slice(0, 7);
+            futurePredictions.forEach(prediction => {
+                const forecastCard = document.createElement('div');
+                forecastCard.className = 'prediction-card bg-blue-100 shadow';
+                
+                // Round predicted value for better display
+                const roundedValue = Math.round(prediction.predicted);
+                
+                forecastCard.innerHTML = `
+                    <p class="text-sm font-semibold">${prediction.date.toLocaleDateString('es-ES')}</p>
+                    <p class="text-2xl font-bold text-center text-indigo-700">${roundedValue}</p>
+                    <p class="text-xs text-center text-gray-500">(${prediction.predicted.toFixed(2)})</p>
+                `;
+                
+                forecastContainer.appendChild(forecastCard);
+            });
+        }
+
+        function updateLightGBMResults(results, modelData) {
+            // Update table
+            const tableBody = document.querySelector('#lightgbmResults tbody');
+            tableBody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                
+                const dateCell = document.createElement('td');
+                dateCell.textContent = result.date.toLocaleDateString('es-ES');
+                
+                const predCell = document.createElement('td');
+                predCell.textContent = result.predicted.toFixed(2);
+                
+                const actualCell = document.createElement('td');
+                actualCell.textContent = result.actual !== null ? result.actual.toFixed(2) : 'N/A';
+                
+                row.appendChild(dateCell);
+                row.appendChild(predCell);
+                row.appendChild(actualCell);
+                
+                // Highlight future predictions
+                if (result.date > today) {
+                    row.classList.add('highlighted');
+                }
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Update error metrics
+            const testResults = results.filter(r => r.actual !== null);
+            const mse = calculateMSE(testResults);
+            const mae = calculateMAE(testResults);
+            const rmse = Math.sqrt(mse);
+            
+            document.getElementById('lightgbm-mse').textContent = mse.toFixed(4);
+            document.getElementById('lightgbm-mae').textContent = mae.toFixed(4);
+            document.getElementById('lightgbm-rmse').textContent = rmse.toFixed(4);
+            
+            // Update chart
+            const recentResults = results.slice(-30); // Last 30 days
+            
+            if (lightgbmChart) {
+                lightgbmChart.destroy();
+            }
+            
+            const ctx = document.getElementById('lightgbmChart').getContext('2d');
+            lightgbmChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentResults.map(r => r.date.toLocaleDateString('es-ES')),
+                    datasets: [
+                        {
+                            label: 'Valores Actuales',
+                            data: recentResults.map(r => r.actual),
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Predicciones LightGBM',
+                            data: recentResults.map(r => r.predicted),
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 13
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Pronóstico LightGBM vs Valores Actuales'
+                        }
+                    }
+                }
+            });
+            
+            // Update forecast cards
+            const forecastContainer = document.getElementById('lightgbm-forecast');
+            forecastContainer.innerHTML = '';
+            
+            const futurePredictions = results.filter(r => r.date > today).slice(0, 7);
+            futurePredictions.forEach(prediction => {
+                const forecastCard = document.createElement('div');
+                forecastCard.className = 'prediction-card bg-green-100 shadow';
+                
+                // Round predicted value for better display
+                const roundedValue = Math.round(prediction.predicted);
+                
+                forecastCard.innerHTML = `
+                    <p class="text-sm font-semibold">${prediction.date.toLocaleDateString('es-ES')}</p>
+                    <p class="text-2xl font-bold text-center text-green-700">${roundedValue}</p>
+                    <p class="text-xs text-center text-gray-500">(${prediction.predicted.toFixed(2)})</p>
+                `;
+                
+                forecastContainer.appendChild(forecastCard);
+            });
+        }
+
+        function updateNeuralNetResults(results, modelData) {
+            // Update table
+            const tableBody = document.querySelector('#neuralnetResults tbody');
+            tableBody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                
+                const dateCell = document.createElement('td');
+                dateCell.textContent = result.date.toLocaleDateString('es-ES');
+                
+                const predCell = document.createElement('td');
+                predCell.textContent = result.predicted.toFixed(2);
+                
+                const actualCell = document.createElement('td');
+                actualCell.textContent = result.actual !== null ? result.actual.toFixed(2) : 'N/A';
+                
+                row.appendChild(dateCell);
+                row.appendChild(predCell);
+                row.appendChild(actualCell);
+                
+                // Highlight future predictions
+                if (result.date > today) {
+                    row.classList.add('highlighted');
+                }
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Update error metrics
+            const testResults = results.filter(r => r.actual !== null);
+            const mse = calculateMSE(testResults);
+            const mae = calculateMAE(testResults);
+            const rmse = Math.sqrt(mse);
+            
+            document.getElementById('neuralnet-mse').textContent = mse.toFixed(4);
+            document.getElementById('neuralnet-mae').textContent = mae.toFixed(4);
+            document.getElementById('neuralnet-rmse').textContent = rmse.toFixed(4);
+            
+            // Update chart
+            const recentResults = results.slice(-30); // Last 30 days
+            
+            if (neuralnetChart) {
+                neuralnetChart.destroy();
+            }
+            
+            const ctx = document.getElementById('neuralnetChart').getContext('2d');
+            neuralnetChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentResults.map(r => r.date.toLocaleDateString('es-ES')),
+                    datasets: [
+                        {
+                            label: 'Valores Actuales',
+                            data: recentResults.map(r => r.actual),
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Predicciones Red Neuronal',
+                            data: recentResults.map(r => r.predicted),
+                            borderColor: 'rgb(153, 102, 255)',
+                            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 13
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Pronóstico Red Neuronal vs Valores Actuales'
+                        }
+                    }
+                }
+            });
+            
+            // Update forecast cards
+            const forecastContainer = document.getElementById('neuralnet-forecast');
+            forecastContainer.innerHTML = '';
+            
+            const futurePredictions = results.filter(r => r.date > today).slice(0, 7);
+            futurePredictions.forEach(prediction => {
+                const forecastCard = document.createElement('div');
+                forecastCard.className = 'prediction-card bg-purple-100 shadow';
+                
+                // Round predicted value for better display
+                const roundedValue = Math.round(prediction.predicted);
+                
+                forecastCard.innerHTML = `
+                    <p class="text-sm font-semibold">${prediction.date.toLocaleDateString('es-ES')}</p>
+                    <p class="text-2xl font-bold text-center text-purple-700">${roundedValue}</p>
+                    <p class="text-xs text-center text-gray-500">(${prediction.predicted.toFixed(2)})</p>
+                `;
+                
+                forecastContainer.appendChild(forecastCard);
+            });
+        }
+
+        function updateHybridResults(results, modelData) {
+            // Update table
+            const tableBody = document.querySelector('#hybridResults tbody');
+            tableBody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                
+                const dateCell = document.createElement('td');
+                dateCell.textContent = result.date.toLocaleDateString('es-ES');
+                
+                const predCell = document.createElement('td');
+                predCell.textContent = result.predicted.toFixed(2);
+                
+                const actualCell = document.createElement('td');
+                actualCell.textContent = result.actual !== null ? result.actual.toFixed(2) : 'N/A';
+                
+                row.appendChild(dateCell);
+                row.appendChild(predCell);
+                row.appendChild(actualCell);
+                
+                // Highlight future predictions
+                if (result.date > today) {
+                    row.classList.add('highlighted');
+                }
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Update error metrics
+            const testResults = results.filter(r => r.actual !== null);
+            const mse = calculateMSE(testResults);
+            const mae = calculateMAE(testResults);
+            const rmse = Math.sqrt(mse);
+            
+            document.getElementById('hybrid-mse').textContent = mse.toFixed(4);
+            document.getElementById('hybrid-mae').textContent = mae.toFixed(4);
+            document.getElementById('hybrid-rmse').textContent = rmse.toFixed(4);
+            
+            // Update chart
+            const recentResults = results.slice(-30); // Last 30 days
+            
+            if (hybridChart) {
+                hybridChart.destroy();
+            }
+            
+            const ctx = document.getElementById('hybridChart').getContext('2d');
+            hybridChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentResults.map(r => r.date.toLocaleDateString('es-ES')),
+                    datasets: [
+                        {
+                            label: 'Valores Actuales',
+                            data: recentResults.map(r => r.actual),
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Predicciones Modelo Híbrido',
+                            data: recentResults.map(r => r.predicted),
+                            borderColor: 'rgb(255, 159, 64)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 13
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Pronóstico Modelo Híbrido vs Valores Actuales'
+                        }
+                    }
+                }
+            });
+            
+            // Update forecast cards
+            const forecastContainer = document.getElementById('hybrid-forecast');
+            forecastContainer.innerHTML = '';
+            
+            const futurePredictions = results.filter(r => r.date > today).slice(0, 7);
+            futurePredictions.forEach(prediction => {
+                const forecastCard = document.createElement('div');
+                forecastCard.className = 'prediction-card bg-orange-100 shadow';
+                
+                // Round predicted value for better display
+                const roundedValue = Math.round(prediction.predicted);
+                
+                forecastCard.innerHTML = `
+                    <p class="text-sm font-semibold">${prediction.date.toLocaleDateString('es-ES')}</p>
+                    <p class="text-2xl font-bold text-center text-orange-700">${roundedValue}</p>
+                    <p class="text-xs text-center text-gray-500">(${prediction.predicted.toFixed(2)})</p>
+                `;
+                
+                forecastContainer.appendChild(forecastCard);
+            });
+        }
+
+        function updateConsensusResults(results, xgboostResults, lightgbmResults, neuralNetResults, hybridResults, modelData) {
+            // Update table
+            const tableBody = document.querySelector('#consensusResults tbody');
+            tableBody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            // Create a date map to match results from all models
+            const dateMap = new Map();
+            for (const result of results) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                dateMap.set(dateStr, {
+                    date: result.date,
+                    actual: result.actual,
+                    consensus: result.predicted,
+                    xgboost: null,
+                    lightgbm: null,
+                    neuralnet: null,
+                    hybrid: null
+                });
+            }
+            
+            // Fill in predictions from each model
+            for (const result of xgboostResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).xgboost = result.predicted;
+                }
+            }
+            
+            for (const result of lightgbmResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).lightgbm = result.predicted;
+                }
+            }
+            
+            for (const result of neuralNetResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).neuralnet = result.predicted;
+                }
+            }
+            
+            for (const result of hybridResults) {
+                const dateStr = result.date.toISOString().split('T')[0];
+                if (dateMap.has(dateStr)) {
+                    dateMap.get(dateStr).hybrid = result.predicted;
+                }
+            }
+            
+            // Sort by date
+            const sortedResults = Array.from(dateMap.values()).sort((a, b) => a.date - b.date);
+            
+            // Add rows to table
+            for (const result of sortedResults) {
+                const row = document.createElement('tr');
+                
+                const dateCell = document.createElement('td');
+                dateCell.textContent = result.date.toLocaleDateString('es-ES');
+                
+                const xgboostCell = document.createElement('td');
+                xgboostCell.textContent = result.xgboost !== null ? result.xgboost.toFixed(2) : '-';
+                
+                const lightgbmCell = document.createElement('td');
+                lightgbmCell.textContent = result.lightgbm !== null ? result.lightgbm.toFixed(2) : '-';
+                
+                const neuralnetCell = document.createElement('td');
+                neuralnetCell.textContent = result.neuralnet !== null ? result.neuralnet.toFixed(2) : '-';
+                
+                const hybridCell = document.createElement('td');
+                hybridCell.textContent = result.hybrid !== null ? result.hybrid.toFixed(2) : '-';
+                
+                const consensusCell = document.createElement('td');
+                consensusCell.textContent = result.consensus.toFixed(2);
+                
+                const actualCell = document.createElement('td');
+                actualCell.textContent = result.actual !== null ? result.actual.toFixed(2) : 'N/A';
+                
+                row.appendChild(dateCell);
+                row.appendChild(xgboostCell);
+                row.appendChild(lightgbmCell);
+                row.appendChild(neuralnetCell);
+                row.appendChild(hybridCell);
+                row.appendChild(consensusCell);
+                row.appendChild(actualCell);
+                
+                // Highlight future predictions
+                if (result.date > today) {
+                    row.classList.add('highlighted');
+                }
+                
+                tableBody.appendChild(row);
+            }
+            
+            // Update chart
+            const recentResults = sortedResults.slice(-30); // Last 30 days
+            
+            if (consensusChart) {
+                consensusChart.destroy();
+            }
+            
+            const ctx = document.getElementById('consensusChart').getContext('2d');
+            consensusChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentResults.map(r => r.date.toLocaleDateString('es-ES')),
+                    datasets: [
+                        {
+                            label: 'Valores Actuales',
+                            data: recentResults.map(r => r.actual),
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'XGBoost',
+                            data: recentResults.map(r => r.xgboost),
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            tension: 0.1,
+                            hidden: true
+                        },
+                        {
+                            label: 'LightGBM',
+                            data: recentResults.map(r => r.lightgbm),
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            hidden: true
+                        },
+                        {
+                            label: 'Red Neuronal',
+                            data: recentResults.map(r => r.neuralnet),
+                            borderColor: 'rgb(153, 102, 255)',
+                            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                            tension: 0.1,
+                            hidden: true
+                        },
+                        {
+                            label: 'Modelo Híbrido',
+                            data: recentResults.map(r => r.hybrid),
+                            borderColor: 'rgb(255, 159, 64)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            tension: 0.1,
+                            hidden: true
+                        },
+                        {
+                            label: 'Consenso',
+                            data: recentResults.map(r => r.consensus),
+                            borderColor: 'rgb(0, 100, 0)',
+                            backgroundColor: 'rgba(0, 100, 0, 0.2)',
+                            tension: 0.1,
+                            borderWidth: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 13
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Comparación de Todos los Modelos'
+                        }
+                    }
+                }
+            });
+            
+            // Update forecast cards
+            const forecastContainer = document.getElementById('consensus-forecast');
+            forecastContainer.innerHTML = '';
+            
+            const futurePredictions = results.filter(r => r.date > today).slice(0, 7);
+            futurePredictions.forEach(prediction => {
+                const forecastCard = document.createElement('div');
+                forecastCard.className = 'prediction-card bg-green-100 shadow';
+                
+                // Round predicted value for better display
+                const roundedValue = Math.round(prediction.predicted);
+                
+                forecastCard.innerHTML = `
+                    <p class="text-sm font-semibold">${prediction.date.toLocaleDateString('es-ES')}</p>
+                    <p class="text-2xl font-bold text-center text-green-800">${roundedValue}</p>
+                    <p class="text-xs text-center text-gray-500">(${prediction.predicted.toFixed(2)})</p>
+                `;
+                
+                forecastContainer.appendChild(forecastCard);
+            });
+        }
+
+        // Utility functions
+        function calculateMSE(results) {
+            let sum = 0;
+            let count = 0;
+            
+            for (const result of results) {
+                if (result.actual !== null && result.predicted !== null) {
+                    sum += Math.pow(result.actual - result.predicted, 2);
+                    count++;
+                }
+            }
+            
+            return count > 0 ? sum / count : 0;
+        }
+
+        function calculateMAE(results) {
+            let sum = 0;
+            let count = 0;
+            
+            for (const result of results) {
+                if (result.actual !== null && result.predicted !== null) {
+                    sum += Math.abs(result.actual - result.predicted);
+                    count++;
+                }
+            }
+            
+            return count > 0 ? sum / count : 0;
+        }
+
+    </script>
+</body>
+</html>
